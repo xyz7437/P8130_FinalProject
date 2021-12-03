@@ -1,0 +1,88 @@
+---
+title: "Final Project"
+author: "Yijia Jiang"
+date: "11/16/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Purpose
+We will be analyzing data from the "County Demographic Information" (CDI) data set, which contains characteristics of 440 counties in the United States collected from 1990-1992. The primary objective of this investigation is to develop insight relevant to predicting the crime rate in counties, namely to summarize as the crime rate per 1,000 population (CRM_1000). 
+
+
+## library
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+## Data preprocessing
+```{r}
+cdi <- read.csv("cdi.csv") %>%
+  mutate(crime_rate = crimes/pop, 
+         pcarea = area/pop,
+         pcdocs = docs/pop,
+         pcbeds = beds/pop,
+         region = relevel(factor(region),ref = 3))
+summary(cdi)
+```
+
+## Rank of the crime rate by state
+```{r}
+cdi_state <- cdi %>%
+  group_by(state) %>%
+  summarize(crime_rate = mean(crime_rate))
+cdi_state_new <- cdi_state[order(-rank(cdi_state$crime_rate)),]
+
+ggplot(cdi_state,aes(x=reorder(state,crime_rate),y=crime_rate,fill=crime_rate)) + 
+  geom_bar(stat ='identity')+
+  coord_flip() + 
+  theme_grey() + 
+  labs(title = 'Ranking of Counties by crime rate',
+       y='Crime rate',x='Counties') +
+  geom_hline(yintercept = mean(cdi$crime_rate),color = 'blue')
+```
+
+## EDA
+```{r}
+plot(x=cdi$area,y=cdi$crime_rate)
+plot(x=cdi$pcincome,y=cdi$crime_rate)
+plot(x=cdi$unemp,y=cdi$crime_rate)
+plot(x=cdi$hsgrad,y=cdi$crime_rate)
+plot(x=cdi$poverty,y=cdi$crime_rate)
+pairs(~crime_rate + pcarea + pop18 + pop65 + pcdocs + pcbeds + hsgrad + bagrad + poverty + unemp + pcincome + factor(region),
+      data = cdi, main = "Scatterplot Matrix")
+```
+
+## Data split
+```{r}
+split <- 0.80
+set.seed(1234)
+cdi<- cdi %>%
+  select(-c(id,cty,state,pop,crimes))
+trainIndex <- sample(1:nrow(cdi), 0.8*nrow(cdi))
+data_train <- cdi[ trainIndex,]
+data_test <- cdi[-trainIndex,]
+dim(data_train)
+dim(data_test)
+```
+
+
+
+## Modelling
+```{r}
+crime_mod_reg <- lm(crime_rate~. ,data=data_train)
+anova(crime_mod_reg)
+```
+
+## Evaluation
+```{r}
+
+
+```
+
+
+
