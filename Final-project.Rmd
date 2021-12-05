@@ -23,8 +23,6 @@ library(caret)
 library(car)
 ```
 
-
-
 ## Data preprocessing
 ```{r}
 rm(list = ls())
@@ -170,14 +168,10 @@ model_caret = train(crime_rate ~ pop18 + bagrad + poverty +
 model_caret$finalModel
 ```
 
-
-
 ## Forward Elimination
 ```{r}
 step(mult.fit, direction = 'forward')
 ```
-
-
 
 
 ## Model Diagnosis
