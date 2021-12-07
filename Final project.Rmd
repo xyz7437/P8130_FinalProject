@@ -25,6 +25,7 @@ library(caret)
 library(car)
 library(MASS) # boxcox
 library(performance) # vif
+library(GGally)
 ```
 
 
@@ -32,14 +33,14 @@ library(performance) # vif
 ## Data preprocessing
 ```{r}
 rm(list = ls())
-cdi <- read.csv("./data/cdi.csv") %>%
+cdi = read.csv("./data/cdi.csv") %>%
   mutate(crime_rate = crimes/pop, 
          pcarea = area/pop,
          pcdocs = docs/pop,
          pcbeds = beds/pop,
          region = relevel(factor(region),ref = 3))
-cdi_new = cdi %>%
-  select(crime_rate, everything(), -id, -cty, -state, -area, -docs, -beds, -crimes, -pop, -totalinc)
+cdi_new = cdi %>% 
+  dplyr::select(crime_rate, everything(), -id, -cty, -state, -area, -docs, -beds, -crimes, -pop, -totalinc)
 summary(cdi_new)
 ```
 
@@ -112,25 +113,70 @@ cdi_new %>%
 #plot(x=cdi$poverty,y=cdi$crime_rate)
 # pairs(~crime_rate + pcarea + pop18 + pop65 + pcdocs + pcbeds + hsgrad + bagrad + poverty + unemp + pcincome +      factor(region), data = cdi_new, panel = panel.smooth, upper.panel = NULL, main = "Scatterplot Matrix")
 pairs(~crime_rate +.,data=cdi_new,panel = panel.smooth, upper.panel = NULL, main = "Scatterplot Matrix")
+```
 
 
+```{r}
+# remove outliers
+remove_outliers <- function(x, na.rm = TRUE, ...) {
+  qnt <- quantile(x, probs=c(.25, .75), na.rm = na.rm, ...)
+  H <- 1.5 * IQR(x, na.rm = na.rm)
+  y <- x
+  y[x < (qnt[1] - H)] <- NA
+  y[x > (qnt[2] + H)] <- NA
+  y
+}
+
+crime_rate_no_outliers = remove_outliers(cdi_new$crime_rate)
+pop18_no_outliers = remove_outliers(cdi_new$pop18)
+pop65_no_outliers = remove_outliers(cdi_new$pop65)
+hsgrad_no_outliers = remove_outliers(cdi_new$hsgrad)
+bagrad_no_outliers = remove_outliers(cdi_new$bagrad)
+poverty_no_outliers = remove_outliers(cdi_new$poverty)
+unemp_no_outliers = remove_outliers(cdi_new$unemp)
+pcincome_no_outliers = remove_outliers(cdi_new$pcincome)
+pcarea_no_outliers = remove_outliers(cdi_new$pcarea)
+pcdocs_no_outliers = remove_outliers(cdi_new$pcdocs)
+pcbeds_no_outliers = remove_outliers(cdi_new$pcbeds)
+
+cdi_no_outliers = cbind.data.frame(crime_rate_no_outliers, pop18_no_outliers, pop65_no_outliers, hsgrad_no_outliers, bagrad_no_outliers, poverty_no_outliers, unemp_no_outliers, pcincome_no_outliers, pcarea_no_outliers, pcdocs_no_outliers, pcbeds_no_outliers, cdi_new$region) %>%
+  drop_na() %>%
+  rename(region = "cdi_new$region")
+```
+
+
+```{r}
 # Correlation plot
-corrplot(cor(subset(cdi_new,select = -region)), type = "lower", diag = FALSE)
+ggcorr(cdi_new, label = TRUE, hjust = 0.9, layout.exp = 2, label_size = 3)
+ggcorr(cdi_no_outliers, label = TRUE, hjust = 0.9, layout.exp = 2, label_size = 3)
 ```
 
 ## Assess the normality of the data
 ```{r}
-shapiro.test(cdi_new$crime_rate)
-shapiro.test(cdi_new$pop18)
-shapiro.test(cdi_new$pop65)
-shapiro.test(cdi_new$pcincome)
-shapiro.test(cdi_new$unemp)
-shapiro.test(cdi_new$hsgrad)
-shapiro.test(cdi_new$bagrad)
-shapiro.test(cdi_new$poverty)
-shapiro.test(cdi_new$pcarea)
-shapiro.test(cdi_new$pcdocs)
-shapiro.test(cdi_new$pcbeds)
+shapiro.test(cdi_no_outliers$crime_rate_no_outliers)
+shapiro.test(cdi_no_outliers$pop18_no_outliers)
+shapiro.test(cdi_no_outliers$pop65_no_outliers)
+shapiro.test(cdi_no_outliers$pcincome_no_outliers)
+shapiro.test(cdi_no_outliers$unemp_no_outliers)
+shapiro.test(cdi_no_outliers$hsgrad_no_outliers)
+shapiro.test(cdi_no_outliers$bagrad_no_outliers)
+shapiro.test(cdi_no_outliers$poverty_no_outliers)
+shapiro.test(cdi_no_outliers$pcarea_no_outliers)
+shapiro.test(cdi_no_outliers$pcdocs_no_outliers)
+shapiro.test(cdi_no_outliers$pcbeds_no_outliers)
+```
+
+
+```{r}
+# qqplot
+qqnorm(cdi_no_outliers$pcbeds_no_outliers, pch = 1, frame = FALSE)
+qqline(cdi_no_outliers$pcbeds_no_outliers, col = "steelblue", lwd = 2)
+
+qqnorm(cdi_no_outliers$crime_rate_no_outliers, pch = 1, frame = FALSE)
+qqline(cdi_no_outliers$crime_rate_no_outliers, col = "steelblue", lwd = 2)
+
+qqnorm(cdi_new$crime_rate, pch = 1, frame = FALSE)
+qqline(cdi_new$crime_rate, col = "steelblue", lwd = 2)
 ```
 
 According to the Shapiro-Wilk normality test, all the data are normally distributed.
@@ -208,7 +254,7 @@ model_caret$finalModel
 ```{r}
 par(mfrow=c(3,2))
 plot(mult.fit.back)
-boxcox(mult.fit.back)
+bc = boxcox(mult.fit.back)
 durbinWatsonTest(mult.fit.back)
 ```
 
@@ -235,8 +281,36 @@ summary(with); summary(without)
 # check without diagnostics
 par(mfrow=c(3,2))
 plot(without)
-boxcox(without)
+bc_without = boxcox(without)
 ```
+
+```{r}
+# test normality
+(lambda <- bc$x[which.max(bc$y)])
+new_model <- lm(((crime_rate^lambda-1)/lambda) ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds, data = cdi_new)
+
+par(mfrow=c(3,2))
+plot(new_model, which = 2)
+boxcox(new_model)
+
+(lambda2 <- bc_without$x[which.max(bc_without$y)])
+new_model2 <- lm(((crime_rate^lambda2-1)/lambda2) ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds, data = cdi_new_out)
+
+par(mfrow=c(2,2))
+plot(new_model2, which = 2)
+plot(with, which = 2)
+plot(new_model, which = 2)
+```
+
+```{r}
+# find r^2
+rbind(new_model %>% broom::glance() %>% mutate(model_type = "new_model"),
+      new_model2 %>% broom::glance() %>% mutate(model_type = "new_model2"),
+      with %>% broom::glance()%>% mutate(model_type = "with"),
+      without %>% broom::glance()%>% mutate(model_type = "without")) %>%
+        dplyr::select(model_type, everything())
+```
+
 
 ## Assessing Multicollinearity
 ```{r}
