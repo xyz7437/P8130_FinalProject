@@ -16,11 +16,15 @@ We will be analyzing data from the "County Demographic Information" (CDI) data s
 ## Import the package we need
 ```{r include = FALSE}
 library(tidyverse)
+library(usmap)
 library(ggplot2)
 library(corrplot)
+library(EnvStats)
 library(leaps)
 library(caret)
 library(car)
+library(MASS) # boxcox
+library(performance) # vif
 ```
 
 
@@ -54,13 +58,28 @@ ggplot(cdi_state,aes(x=reorder(state,crime_rate),y=crime_rate,fill=crime_rate)) 
   theme_grey() + 
   labs(title = 'Ranking of Counties by crime rate',
        y='Crime rate',x='Counties') +
-  geom_hline(yintercept = mean(cdi$crime_rate),color = 'blue')+
+  geom_hline(yintercept = mean(cdi$crime_rate),color = "#C9592E")+
   theme(plot.title = element_text(hjust = 0.5,size = 14, face = "bold"),
         axis.text=element_text(size=6.5))
 ```
 
 
-# Exploratory Data Analysis
+## US crime rate map by state
+```{r}
+p<-plot_usmap(data = cdi_state, values = "crime_rate", color = "#C9592E", size = 0.5,
+              labels = TRUE, label_color = "grey10") + 
+   scale_fill_continuous(low = "white", high = "#C9592E", na.value = "grey90",
+                         name = "Crime rate", label = scales::comma) + 
+   theme(legend.position = "right") + 
+   theme(panel.background = element_rect(colour = "black")) + 
+   labs(title = "US Crime Rate Map") +
+   theme(plot.title = element_text(hjust = 0.5,size = 14, face = "bold"))
+p$layers[[2]]$aes_params$size <- 2.8
+print(p)
+```
+
+
+## Exploratory Data Analysis
 ```{r}
 # Boxplots for each variable
 par(mfrow=c(3,4))
@@ -75,6 +94,9 @@ boxplot(cdi_new$poverty, main='poverty')
 boxplot(cdi_new$pcarea, main='pcarea')
 boxplot(cdi_new$pcdocs, main='pcdocs')
 boxplot(cdi_new$pcbeds, main='pcbeds')
+
+# Crime rate by region
+boxplot(crime_rate ~ region, data = cdi_new)
 
 # Boxplot for transforming pcarea, looks more normal
 cdi_new %>%
@@ -96,21 +118,29 @@ pairs(~crime_rate +.,data=cdi_new,panel = panel.smooth, upper.panel = NULL, main
 corrplot(cor(subset(cdi_new,select = -region)), type = "lower", diag = FALSE)
 ```
 
-
-
-
-## Data split
+## Assess the normality of the data
 ```{r}
-#split <- 0.80
-#set.seed(1234)
-#cdi<- cdi %>%
-#  select(-c(id,cty,state,pop,crimes))
-#trainIndex <- sample(1:nrow(cdi), 0.8*nrow(cdi))
-#data_train <- cdi[ trainIndex,]
-#data_test <- cdi[-trainIndex,]
-#dim(data_train)
-#dim(data_test) 
+shapiro.test(cdi_new$crime_rate)
+shapiro.test(cdi_new$pop18)
+shapiro.test(cdi_new$pop65)
+shapiro.test(cdi_new$pcincome)
+shapiro.test(cdi_new$unemp)
+shapiro.test(cdi_new$hsgrad)
+shapiro.test(cdi_new$bagrad)
+shapiro.test(cdi_new$poverty)
+shapiro.test(cdi_new$pcarea)
+shapiro.test(cdi_new$pcdocs)
+shapiro.test(cdi_new$pcbeds)
 ```
+
+According to the Shapiro-Wilk normality test, all the data are normally distributed.
+
+
+## Detect the outliers
+```{r}
+rosnerTest(cdi_new$crime_rate,k = 3)$all.stats
+```
+
 
 ## Modelling
 ```{r}
@@ -118,6 +148,7 @@ corrplot(cor(subset(cdi_new,select = -region)), type = "lower", diag = FALSE)
 mult.fit = lm(crime_rate ~ ., data = cdi_new)
 summary(mult.fit)
 ```
+
 
 
 ## Backwards Elimination
@@ -135,7 +166,7 @@ crime_rate ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds
 ```{r}
 mat = as.matrix(cdi_new)
 # Printing the 2 best models of each size, using the Cp criterion:
-leaps(x = mat[,1:10], y = mat[,11], nbest = 2, method = "Cp")
+leaps(x = mat[,1:12], y = mat[,13], nbest = 2, method = "Cp")
 
 # Printing the 2 best models of each size, using the adjusted R^2 criterion:
 leaps(x = mat[,1:12], y = mat[,13], nbest = 2, method = "adjr2")
@@ -151,6 +182,7 @@ par(mfrow=c(1,2))
 plot(2:9, rs$cp, xlab="No of parameters", ylab="Cp Statistic")
 abline(0,1)
 ```
+
 
 
 ## Validation
@@ -172,21 +204,45 @@ model_caret$finalModel
 
 
 
-## Forward Elimination
+## Model Diagnostics
 ```{r}
-step(mult.fit, direction = 'forward')
-```
-
-
-
-
-## Model Diagnosis
-```{r}
-par(mfrow=c(2,2))
+par(mfrow=c(3,2))
 plot(mult.fit.back)
+boxcox(mult.fit.back)
 durbinWatsonTest(mult.fit.back)
 ```
 
+
+## Checking to Outliers and Influential Points
+```{r}
+# Cook's distance
+plot(mult.fit.back, which = 4)
+
+# remove influential points
+cdi_new_out = cdi_new[-c(6,128,412),]
+
+# plot with and without influential points
+par(mfrow=c(1,2))
+plot(cdi_new$pop18, cdi_new$crime_rate)
+plot(cdi_new_out$pop18, cdi_new_out$crime_rate)
+
+# fit model with and without influential points
+with = lm(crime_rate ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds, data = cdi_new)
+without = lm(crime_rate ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds, data = cdi_new_out)
+
+summary(with); summary(without)
+
+# check without diagnostics
+par(mfrow=c(3,2))
+plot(without)
+boxcox(without)
+```
+
+## Assessing Multicollinearity
+```{r}
+# Calculate the variance inflation factor (VIF)
+check_collinearity(mult.fit.back)
+```
 
 
 
