@@ -223,7 +223,9 @@ mult_fit_back_without_int
 
 ## Compare the Adjusted R^2
 ```{r}
-rbind(mult_fit_back_without %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without"),
+rbind(mult_fit_back %>% broom::glance() %>% mutate(model_type = "mult_fit_back"),
+      mult_fit_back_without %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without"),
+      mult_fit_back_without_trans %>% broom::glance()%>% mutate(model_type = "mult_fit_back_without_trans"),
       mult_fit_back_without_vif %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without_vif"), 
       mult_fit_back_without_int %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without_int")) %>%
       dplyr::select(model_type, everything())
@@ -231,89 +233,8 @@ rbind(mult_fit_back_without %>% broom::glance() %>% mutate(model_type = "mult_fi
 
 
 
-
-
-
-```{r}
-set.seed(123)
-inTrain <- createDataPartition(y = cdi_pc$crime_rate, p = 0.8, list = FALSE)
-str(inTrain)
-training <- cdi_pc[inTrain,]
-testing <- cdi_pc[-inTrain,]
-
-split <- 0.80
-set.seed(1234)
-cdi<- cdi %>%
-  select(-c(id,cty,state,pop,crimes))
-trainIndex <- sample(1:nrow(cdi), 0.8*nrow(cdi))
-data_train <- cdi[ trainIndex,]
-data_test <- cdi[-trainIndex,]
-dim(data_train)
-dim(data_test) 
-```
-
-
-
-```{r}
-ctrl <- trainControl(method = "repeatedcv", repeats = 3, classProbs = TRUE, summaryFunction = twoClassSummary)
-plsFit <- train(crime_rate~., data = training, method = "pls", tuneLength = 15, trControl = ctrl, metric = "ROC", preProc =  c("center", "scale"))
-library(pls)
-plsFit
-
-plsClass <- predict(plsFit, newdata = testing)
-```
-
-
-
-
-
-
-
-
 # Validation
-```{r}
-set.seed(1234)
-# Use 5-fold validation and create the training sets
-train = trainControl(method = "cv", number = 5)
-
-# Fit the 4-variables model that we discussed in previous lectures
-model_caret = train(crime_rate ~ pop18 + bagrad + poverty + 
-                    pcincome + region + pcarea + pcbeds,
-                    data = cdi_pc_out,
-                    trControl = train,
-                    method = 'lm',
-                    na.action = na.pass)
-
-model_caret = predict(crime_rate ~ pop18 + bagrad + poverty + 
-                      pcincome + region + pcarea + pcbeds,
-                      data = cdi_pc,
-                      trControl = test,
-                      method = 'lm',
-                      na.action = na.pass)
-
-model_caret$finalModel
-model_caret
-```
-
-
-
-## Validation
-```{r}
-set.seed(123)
-# Use 5-fold validation and create the training sets
-train = trainControl(method = "cv", number = 5)
-
-# Fit the 4-variables model that we discussed in previous lectures
-model_caret = train(crime_rate ~ pop18 + bagrad + poverty + 
-                    pcincome + region + pcarea + pcbeds,
-                    data = cdi_new,
-                    trControl = train,
-                    method = 'lm',
-                    na.action = na.pass)
-
-model_caret$finalModel
-```
-
+## Compute MSE by cross-validation
 ```{r}
 cv_df = 
   crossv_mc(cdi_pc_out, 100) %>% 
@@ -321,12 +242,20 @@ cv_df =
     train = map(train, as_tibble),
     test = map(test, as_tibble)) %>%
   mutate(
-    mod_1 = map(train, ~lm(crime_rate ~ pop18 + bagrad + poverty + 
-                    pcincome + region + pcarea + pcbeds, data = .x)),
-    mod_2 = map(train, ~lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = .x))) %>% 
+    mult_fit_back_without = map(train, ~lm(crime_rate ~ pop18 + bagrad + poverty + 
+                                pcincome + region + pcarea + pcbeds, data = .x)),
+    mult_fit_back_without_trans = map(train, ~lm(sqrt(crime_rate) ~ pop18 + bagrad + poverty + 
+                                      pcincome + region + pcarea + pcbeds, data = .x)),
+    mult_fit_back_without_vif = map(train, ~lm(crime_rate ~ pop18 + bagrad + 
+                                    pcincome + region + pcarea + pcbeds, data = .x)),
+    mult_fit_back_without_int = map(train, ~lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty +
+                                               pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = .x))) %>% 
   mutate(
-    rmse_mod_1 = map2_dbl(mod_1, test, ~rmse(model = .x, data = .y)),
-    rmse_mod_2 = map2_dbl(mod_2, test, ~rmse(model = .x, data = .y)))
+    rmse_mod1 = map2_dbl(mult_fit_back_without, test, ~rmse(model = .x)),
+    rmse_mod2 = map2_dbl(mult_fit_back_without_trans, test, ~rmse(model = .x)),
+    rmse_mod3 = map2_dbl(mult_fit_back_without_vif, test, ~rmse(model = .x)),
+    rmse_mod4 = map2_dbl(mult_fit_back_without_int, test, ~rmse(model = .x))
+  )
 
 cv_df %>% 
   dplyr::select(starts_with("rmse")) %>% 
