@@ -211,15 +211,20 @@ rbind(mult_fit_back %>% broom::glance() %>% mutate(model_type = "mult_fit_back")
 # Calculate the variance inflation factor (VIF)
 check_collinearity(mult_fit_back_without)
 
-# Add the interaction 
-mult_fit_back_without_vif = lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = cdi_pc_out)
+# Remove the variable whose vif is larger than 10 
+mult_fit_back_without_vif = lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
 mult_fit_back_without_vif 
+
+# Add the interaction 
+mult_fit_back_without_int = lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = cdi_pc_out)
+mult_fit_back_without_int
 ```
 
 ## Compare the Adjusted R^2
 ```{r}
 rbind(mult_fit_back_without %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without"),
-      mult_fit_back_without_vif %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without_vif")) %>%
+      mult_fit_back_without_vif %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without_vif"), 
+      mult_fit_back_without_int %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without_int")) %>%
       dplyr::select(model_type, everything())
 ```
 
@@ -227,159 +232,35 @@ rbind(mult_fit_back_without %>% broom::glance() %>% mutate(model_type = "mult_fi
 
 
 
+
 ```{r}
-### Step 1:  Fit simple linear regressions for all variables,look for the variable with lowest p-value
-fit1 = lm(crime_rate ~ pop18, data = cdi_pc)
-summary(fit1)
-fit2 = lm(crime_rate ~ pop65, data = cdi_pc)
-summary(fit2)
-fit3 = lm(crime_rate ~ hsgrad, data = cdi_pc)
-summary(fit3)
-fit4 = lm(crime_rate ~ bagrad, data = cdi_pc)
-summary(fit4)
-fit5 = lm(crime_rate ~ poverty, data = cdi_pc)
-summary(fit5)
-fit6 = lm(crime_rate ~ unemp, data = cdi_pc)
-summary(fit6)
-fit7 = lm(crime_rate ~ pcincome, data = cdi_pc)
-summary(fit7)
-fit8 = lm(crime_rate ~ pcarea, data = cdi_pc)
-summary(fit8)
-fit9 = lm(crime_rate ~ pcdocs, data = cdi_pc)
-summary(fit9)
-fit10 = lm(crime_rate ~ pcbeds, data = cdi_pc)
-summary(fit10)
-fit11 = lm(crime_rate ~ region, data = cdi_pc)
-summary(fit11)
+set.seed(123)
+inTrain <- createDataPartition(y = cdi_pc$crime_rate, p = 0.8, list = FALSE)
+str(inTrain)
+training <- cdi_pc[inTrain,]
+testing <- cdi_pc[-inTrain,]
 
-# Enter first the one with the lowest p-value: poverty
-forward1 = lm(crime_rate ~ poverty, data = cdi_pc)
-summary(forward1)
-
-### Step 2: Enter the one with the lowest p-value in the rest 
-fit1 = update(forward1, . ~ . +pop18)
-summary(fit1)
-fit2 = update(forward1, . ~ . +pop65)
-summary(fit2)
-fit3 = update(forward1, . ~ . +hsgrad)
-summary(fit3)
-fit4 = update(forward1, . ~ . +bagrad)
-summary(fit4)
-fit5 = update(forward1, . ~ . +unemp)
-summary(fit5)
-fit6 = update(forward1, . ~ . +pcincome)
-summary(fit6)
-fit7 = update(forward1, . ~ . +pcarea)
-summary(fit7)
-fit8 = update(forward1, . ~ . +pcdocs)
-summary(fit8)
-fit9 = update(forward1, . ~ . +pcbeds)
-summary(fit9)
-fit10 = update(forward1, . ~ . +region)
-summary(fit10)
-
-# Enter the one with the lowest p-value: pcdocs
-forward2 = update(forward1, . ~ . + pcdocs)
-summary(forward2)
-
-### Step 3: Enter the one with the lowest p-value in the rest 
-fit1 = update(forward2, . ~ . +pop18)
-summary(fit1)
-fit2 = update(forward2, . ~ . +pop65)
-summary(fit2)
-fit3 = update(forward2, . ~ . +hsgrad)
-summary(fit3)
-fit4 = update(forward2, . ~ . +bagrad)
-summary(fit4)
-fit5 = update(forward2, . ~ . +unemp)
-summary(fit5)
-fit6 = update(forward2, . ~ . +pcincome)
-summary(fit6)
-fit7 = update(forward2, . ~ . +pcarea)
-summary(fit7)
-fit8 = update(forward2, . ~ . +pcbeds)
-summary(fit8)
-fit9 = update(forward2, . ~ . +region)
-summary(fit9)
-
-
-# Enter the one with the lowest p-value: region
-forward3 = update(forward2, . ~ . + region)
-summary(forward3)
-
-### Step 4: Enter the one with the lowest p-value in the rest 
-fit1 = update(forward3, . ~ . +pop18)
-summary(fit1)
-fit2 = update(forward3, . ~ . +pop65)
-summary(fit2)
-fit3 = update(forward3, . ~ . +hsgrad)
-summary(fit3)
-fit4 = update(forward3, . ~ . +bagrad)
-summary(fit4)
-fit5 = update(forward3, . ~ . +unemp)
-summary(fit5)
-fit6 = update(forward3, . ~ . +pcincome)
-summary(fit6)
-fit7 = update(forward3, . ~ . +pcarea)
-summary(fit7)
-fit8 = update(forward3, . ~ . +pcbeds)
-summary(fit8)
-
-
-# Enter the one with the lowest p-value: pcarea
-forward4 = update(forward3, . ~ . + pcarea)
-summary(forward4)
-
-
-### Step 5: Enter the one with the lowest p-value in the rest 
-fit1 = update(forward4, . ~ . +pop18)
-summary(fit1)
-fit2 = update(forward4, . ~ . +pop65)
-summary(fit2)
-fit3 = update(forward4, . ~ . +hsgrad)
-summary(fit3)
-fit4 = update(forward4, . ~ . +bagrad)
-summary(fit4)
-fit5 = update(forward4, . ~ . +unemp)
-summary(fit5)
-fit6 = update(forward4, . ~ . +pcincome)
-summary(fit6)
-fit7 = update(forward4, . ~ . +pcbeds)
-summary(fit7)
-
-# Enter the one with the lowest p-value: pcincome
-forward5 = update(forward4, . ~ . + pcincome)
-summary(forward5)
-
-
-### Step 6: Enter the one with the lowest p-value in the rest 
-fit1 = update(forward5, . ~ . +pop18)
-summary(fit1)
-fit2 = update(forward5, . ~ . +pop65)
-summary(fit2)
-fit3 = update(forward5, . ~ . +hsgrad)
-summary(fit3)
-fit4 = update(forward5, . ~ . +bagrad)
-summary(fit4)
-fit5 = update(forward5, . ~ . +unemp)
-summary(fit5)
-fit6 = update(forward5, . ~ . +pcbeds)
-summary(fit6)
-
-
-# P-value of all new added variables are larger than 0.05, which means that they 
-# are not significant predictor, and we stop here.
-
-# The model we obtained is crime_rate ~ poverty + pcdocs + region + pcarea + pcincome
-mult_fit_forward = lm(crime_rate ~ poverty + pcdocs + region + pcarea + 
-    pcincome, data = cdi_pc)
-summary(mult_fit_forward)
-
+split <- 0.80
+set.seed(1234)
+cdi<- cdi %>%
+  select(-c(id,cty,state,pop,crimes))
+trainIndex <- sample(1:nrow(cdi), 0.8*nrow(cdi))
+data_train <- cdi[ trainIndex,]
+data_test <- cdi[-trainIndex,]
+dim(data_train)
+dim(data_test) 
 ```
 
 
 
+```{r}
+ctrl <- trainControl(method = "repeatedcv", repeats = 3, classProbs = TRUE, summaryFunction = twoClassSummary)
+plsFit <- train(crime_rate~., data = training, method = "pls", tuneLength = 15, trControl = ctrl, metric = "ROC", preProc =  c("center", "scale"))
+library(pls)
+plsFit
 
+plsClass <- predict(plsFit, newdata = testing)
+```
 
 
 
@@ -390,25 +271,24 @@ summary(mult_fit_forward)
 
 # Validation
 ```{r}
-set.seed(123)
+set.seed(1234)
 # Use 5-fold validation and create the training sets
 train = trainControl(method = "cv", number = 5)
-test = testControl(method = "cv", number = 5)
 
 # Fit the 4-variables model that we discussed in previous lectures
 model_caret = train(crime_rate ~ pop18 + bagrad + poverty + 
                     pcincome + region + pcarea + pcbeds,
-                    data = cdi_pc,
+                    data = cdi_pc_out,
                     trControl = train,
                     method = 'lm',
                     na.action = na.pass)
 
-model_caret = test(crime_rate ~ pop18 + bagrad + poverty + 
-                    pcincome + region + pcarea + pcbeds,
-                    data = cdi_pc,
-                    trControl = test,
-                    method = 'lm',
-                    na.action = na.pass)
+model_caret = predict(crime_rate ~ pop18 + bagrad + poverty + 
+                      pcincome + region + pcarea + pcbeds,
+                      data = cdi_pc,
+                      trControl = test,
+                      method = 'lm',
+                      na.action = na.pass)
 
 model_caret$finalModel
 model_caret
