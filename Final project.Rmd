@@ -59,8 +59,8 @@ ggplot(cdi_state,aes(x=reorder(state,crime_rate),y=crime_rate,fill=crime_rate)) 
   geom_bar(stat ='identity')+
   coord_flip() + 
   theme_grey() + 
-  labs(title = 'Ranking of Counties by crime rate',
-       y='Crime rate',x='Counties') +
+  labs(title = 'Ranking of States by crime rate',
+       y='Crime rate',x='States') +
   geom_hline(yintercept = mean(cdi$crime_rate),color = "#C9592E")+
   theme(plot.title = element_text(hjust = 0.5,size = 14, face = "bold"),
         axis.text=element_text(size=6.5))
@@ -85,7 +85,7 @@ print(p)
 ## Boxplot for each variable
 ```{r}
 par(mfrow=c(3,4))
-boxplot(cdi_pc$crime_rate, main = "crime_rate")
+boxplot(cdi_pc$crime_rate,  main = "crime_rate")
 boxplot(cdi_pc$pop18, main = "pop18")
 boxplot(cdi_pc$pop65, main = "pop65")
 boxplot(cdi_pc$pcincome, main = "pcincome")
@@ -108,28 +108,9 @@ pairs(~crime_rate +.,data=cdi_pc, panel = panel.smooth, upper.panel = NULL, main
 
 ## Correlation plot/ Heatmap
 ```{r}
-ggcorr(cdi_pc, label = TRUE, hjust = 0.9, layout.exp = 2, label_size = 3)
-```
-
-
-##
-```{r}
-# qqplot
-qqnorm(cdi_pc$pcbeds, pch = 1, frame = FALSE)
-qqline(cdi_pc$pcbed, col = "steelblue", lwd = 2)
-
-qqnorm(cdi_pc$crime_rate, pch = 1, frame = FALSE)
-qqline(cdi_pc$crime_rate, col = "steelblue", lwd = 2)
-
-
-```
-
-According to the Shapiro-Wilk normality test, all the data are normally distributed.
-
-
-## Detect the outliers
-```{r}
-rosnerTest(cdi_pc$crime_rate,k = 3)$all.stats
+cdi_pc %>%
+  dplyr::select(-region) %>%
+  ggcorr(label = TRUE, hjust = 0.9, layout.exp = 2, label_size = 3, label_round = 2)
 ```
 
 
@@ -153,9 +134,8 @@ crime_rate ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds
 ```{r}
 par(mfrow=c(2,3))
 plot(mult_fit_back)
-bc = boxcox(mult_fit_back)
-durbinWatsonTest(mult_fit_back)
 plot(mult_fit_back, which = 4)
+bc = boxcox(mult_fit_back)
 ```
 
 
@@ -190,8 +170,9 @@ boxcox(mult_fit_back_without_trans)
 
 par(mfrow = c(2,3))
 plot(mult_fit_back_without_trans)
-bc_without_trans = boxcox(mult_fit_back_without_trans)
 plot(mult_fit_back_without_trans, which = 4)
+bc_without_trans = boxcox(mult_fit_back_without_trans)
+
 
 par(mfrow = c(1,2))
 plot(mult_fit_back_without, which = 2)
