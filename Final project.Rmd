@@ -1,6 +1,6 @@
 ---
-title: "Final Project"
-author: "Yijia Jiang"
+title: "BM1 Final Project"
+author: "Yijia Jiang, Yifei Xu, Xinyi Zhou, Hengxuan Ma, Chao Gao"
 date: "11/16/2021"
 output: pdf_document
 ---
@@ -20,7 +20,6 @@ library(usmap)
 library(ggplot2)
 library(corrplot)
 library(EnvStats)
-library(leaps)
 library(caret)
 library(car)
 library(MASS) # boxcox
@@ -59,7 +58,7 @@ ggplot(cdi_state,aes(x=reorder(state,crime_rate),y=crime_rate,fill=crime_rate)) 
   geom_bar(stat ='identity')+
   coord_flip() + 
   theme_grey() + 
-  labs(title = 'Ranking of States by crime rate',
+  labs(title = 'Ranking of States by Crime Rate',
        y='Crime rate',x='States') +
   geom_hline(yintercept = mean(cdi$crime_rate),color = "#C9592E")+
   theme(plot.title = element_text(hjust = 0.5,size = 14, face = "bold"),
@@ -80,6 +79,7 @@ p<-plot_usmap(data = cdi_state, values = "crime_rate", color = "#C9592E", size =
 p$layers[[2]]$aes_params$size <- 2.8
 print(p)
 ```
+
 
 
 ## Boxplot for each variable
@@ -121,12 +121,15 @@ mult_fit = lm(crime_rate ~ ., data = cdi_pc)
 summary(mult_fit)
 ```
 
+
 ## Backwards Elimination
 ```{r}
 mult_fit_back <- step(mult_fit, direction='backward')
 mult_fit_back
 ```
 crime_rate ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds
+
+
 
 
 # Model Diagnostics
@@ -139,7 +142,7 @@ bc = boxcox(mult_fit_back)
 ```
 
 
-## Checking to Outliers and Influential Points
+## Diagnose the model without outliers
 ```{r}
 # remove influential points
 cdi_pc_out = cdi_pc[-c(6,128,412),]
@@ -147,13 +150,14 @@ cdi_pc_out = cdi_pc[-c(6,128,412),]
 # fit model with and without influential points
 mult_fit_back_without = lm(crime_rate ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
 
-summary(mult_fit_back); summary(mult_fit_back_without)
+summary(mult_fit_back)
+summary(mult_fit_back_without)
 
 # diagnose the model without outliers
 par(mfrow=c(2,3))
 plot(mult_fit_back_without)
-bc_without = boxcox(mult_fit_back_without)
 plot(mult_fit_back_without, which = 4)
+bc_without = boxcox(mult_fit_back_without)
 ```
 
 ## Box-cox transformation
@@ -161,19 +165,22 @@ plot(mult_fit_back_without, which = 4)
 (lambda = bc_without$x[which.max(bc_without$y)])
 #mult_fit_back_without_trans = lm(((crime_rate^lambda-1)/lambda) ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
 
-mult_fit_back_without_trans = lm(crime_rate^0.5 ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
+mult_fit_back_without_trans = lm(crime_rate^0.5 ~ pop18 + bagrad + poverty + pcincome + 
+                                 region + pcarea + pcbeds, data = cdi_pc_out)
 
+summary(mult_fit_back_without_trans)
 
 par(mfrow = c(1,2))
 plot(mult_fit_back_without_trans, which = 2) 
 boxcox(mult_fit_back_without_trans)
 
+# Diagnose the model by square root transformation
 par(mfrow = c(2,3))
 plot(mult_fit_back_without_trans)
 plot(mult_fit_back_without_trans, which = 4)
 bc_without_trans = boxcox(mult_fit_back_without_trans)
 
-
+# Compare the qq plot
 par(mfrow = c(1,2))
 plot(mult_fit_back_without, which = 2)
 plot(mult_fit_back_without_trans, which = 2)
@@ -195,14 +202,27 @@ check_collinearity(mult_fit_back_without)
 
 # Remove the variable whose vif is larger than 10 
 mult_fit_back_without_vif = lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
-mult_fit_back_without_vif 
+summary(mult_fit_back_without_vif)
+
+# Diagnose the model removing poverty term
+par(mfrow = c(2,3))
+plot(mult_fit_back_without_vif)
+plot(mult_fit_back_without_vif, which = 4)
+bc_without_trans = boxcox(mult_fit_back_without_vif)
+
 
 # Add the interaction 
 mult_fit_back_without_int = lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = cdi_pc_out)
-mult_fit_back_without_int
+summary(mult_fit_back_without_int)
+
+# Diagnose the model with interaction term
+par(mfrow = c(2,3))
+plot(mult_fit_back_without_int)
+plot(mult_fit_back_without_int, which = 4)
+bc_without_trans = boxcox(mult_fit_back_without_int)
 ```
 
-## Compare the Adjusted R^2
+## Compare the Adjusted R^2 again
 ```{r}
 rbind(mult_fit_back %>% broom::glance() %>% mutate(model_type = "mult_fit_back"),
       mult_fit_back_without %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without"),
@@ -214,11 +234,12 @@ rbind(mult_fit_back %>% broom::glance() %>% mutate(model_type = "mult_fit_back")
 
 
 
-# Validation
-## Compute MSE by cross-validation
+# Model Validation
+## Compute RMSE by cross-validation
 ```{r}
+set.seed(1234)
 cv_df = 
-  crossv_mc(cdi_pc_out, 100) %>% 
+  crossv_kfold(cdi_pc_out, k = 5) %>% 
   mutate(
     train = map(train, as_tibble),
     test = map(test, as_tibble)) %>%
@@ -232,12 +253,19 @@ cv_df =
     mult_fit_back_without_int = map(train, ~lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty +
                                                pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = .x))) %>% 
   mutate(
-    rmse_mod1 = map2_dbl(mult_fit_back_without, test, ~rmse(model = .x)),
-    rmse_mod2 = map2_dbl(mult_fit_back_without_trans, test, ~rmse(model = .x)),
-    rmse_mod3 = map2_dbl(mult_fit_back_without_vif, test, ~rmse(model = .x)),
-    rmse_mod4 = map2_dbl(mult_fit_back_without_int, test, ~rmse(model = .x))
-  )
+    rmse_model1 = map2_dbl(mult_fit_back_without, test, ~rmse(model = .x, data = .y)),
+    rmse_model2 = map2_dbl(mult_fit_back_without_trans, test, ~rmse(model = .x, data = .y)),
+    rmse_model3 = map2_dbl(mult_fit_back_without_vif, test, ~rmse(model = .x, data = .y)),
+    rmse_model4 = map2_dbl(mult_fit_back_without_int, test, ~rmse(model = .x, data = .y)))
 
+cv_df %>%
+  dplyr::select(rmse_model1,rmse_model2,rmse_model3,rmse_model4) %>%
+  dplyr::summarise_each(funs(mean( .,na.rm = TRUE)))
+
+```
+
+## Plot the violin plot
+```{r}
 cv_df %>% 
   dplyr::select(starts_with("rmse")) %>% 
   pivot_longer(
@@ -251,5 +279,4 @@ cv_df %>%
 
 
 
-
-
+# Thanks for reading!
