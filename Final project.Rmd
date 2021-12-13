@@ -160,6 +160,8 @@ plot(mult_fit_back_without, which = 4)
 bc_without = boxcox(mult_fit_back_without)
 ```
 
+
+
 ## Box-cox transformation
 ```{r}
 (lambda = bc_without$x[which.max(bc_without$y)])
@@ -170,20 +172,12 @@ mult_fit_back_without_trans = lm(crime_rate^0.5 ~ pop18 + bagrad + poverty + pci
 
 summary(mult_fit_back_without_trans)
 
-par(mfrow = c(1,2))
-plot(mult_fit_back_without_trans, which = 2) 
-boxcox(mult_fit_back_without_trans)
-
 # Diagnose the model by square root transformation
 par(mfrow = c(2,3))
 plot(mult_fit_back_without_trans)
 plot(mult_fit_back_without_trans, which = 4)
 bc_without_trans = boxcox(mult_fit_back_without_trans)
 
-# Compare the qq plot
-par(mfrow = c(1,2))
-plot(mult_fit_back_without, which = 2)
-plot(mult_fit_back_without_trans, which = 2)
 ```
 
 ## Compare the Adjusted R^2
@@ -192,6 +186,7 @@ rbind(mult_fit_back %>% broom::glance() %>% mutate(model_type = "mult_fit_back")
       mult_fit_back_without %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without"),
       mult_fit_back_without_trans %>% broom::glance()%>% mutate(model_type = "mult_fit_back_without_trans")) %>%
         dplyr::select(model_type, everything())
+mult_fit_back_without_trans %>% broom::glance() %>% as.data.frame()
 ```
 
 
@@ -250,19 +245,72 @@ cv_df =
                                       pcincome + region + pcarea + pcbeds, data = .x)),
     mult_fit_back_without_vif = map(train, ~lm(crime_rate ~ pop18 + bagrad + 
                                     pcincome + region + pcarea + pcbeds, data = .x)),
-    mult_fit_back_without_int = map(train, ~lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty +
-                                               pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = .x))) %>% 
+    mult_fit_back_without_int = map(train, ~lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = .x))) %>% 
   mutate(
-    rmse_model1 = map2_dbl(mult_fit_back_without, test, ~rmse(model = .x, data = .y)),
-    rmse_model2 = map2_dbl(mult_fit_back_without_trans, test, ~rmse(model = .x, data = .y)),
-    rmse_model3 = map2_dbl(mult_fit_back_without_vif, test, ~rmse(model = .x, data = .y)),
-    rmse_model4 = map2_dbl(mult_fit_back_without_int, test, ~rmse(model = .x, data = .y)))
+    rmse_model2 = map2_dbl(mult_fit_back_without, test, ~rmse(model = .x, data = .y)),
+    rmse_model3 = map2_dbl(mult_fit_back_without_trans, test, ~rmse(model = .x, data = .y)),
+    rmse_model4 = map2_dbl(mult_fit_back_without_vif, test, ~rmse(model = .x, data = .y)),
+    rmse_model5 = map2_dbl(mult_fit_back_without_int, test, ~rmse(model = .x, data = .y))) %>%
+  mutate(
+    res_model2 = map(mult_fit_back_without, broom::glance %>% as.data.frame),
+    res_model3 = map(mult_fit_back_without_trans, broom::glance %>% as.data.frame),
+    res_model4 = map(mult_fit_back_without_vif, broom::glance %>% as.data.frame),
+    res_model5 = map(mult_fit_back_without_int, broom::glance %>% as.data.frame))%>%
+  unnest(res_model2, res_model3, res_model4, res_model5) %>%
+  dplyr::select(rmse_model2,rmse_model3,rmse_model4,rmse_model5,
+                value.adj.r.squared,value.adj.r.squared1,value.adj.r.squared2,value.adj.r.squared3) %>%
+  rename(adjR_model2 = value.adj.r.squared,
+         adjR_model3 = value.adj.r.squared1,
+         adjR_model4 = value.adj.r.squared2,
+         adjR_model5 = value.adj.r.squared3)
 
 cv_df %>%
-  dplyr::select(rmse_model1,rmse_model2,rmse_model3,rmse_model4) %>%
-  dplyr::summarise_each(funs(mean( .,na.rm = TRUE)))
-
+  summarise_each(funs(mean( .,na.rm = TRUE))) %>%
+  mutate(
+    AIC_model2 = nrow(cdi_pc_out)*log(rmse_model2^2) + 2*7,
+    AIC_model3 = nrow(cdi_pc_out)*log(rmse_model3^2) + 2*7,
+    AIC_model4 = nrow(cdi_pc_out)*log(rmse_model4^2) + 2*6,
+    AIC_model5 = nrow(cdi_pc_out)*log(rmse_model5^2) + 2*10
+  ) %>%
+  mutate(
+    BIC_model2 = nrow(cdi_pc_out)*log(rmse_model2^2) + log(nrow(cdi_pc_out))*7,
+    BIC_model3 = nrow(cdi_pc_out)*log(rmse_model3^2) + log(nrow(cdi_pc_out))*7,
+    BIC_model4 = nrow(cdi_pc_out)*log(rmse_model4^2) + log(nrow(cdi_pc_out))*6,
+    BIC_model5 = nrow(cdi_pc_out)*log(rmse_model5^2) + log(nrow(cdi_pc_out))*10
+  ) %>%
+  t()
 ```
+
+```{r}
+boot_sample = function(df) {
+  sample_frac(df, replace = TRUE)
+}
+
+cv_df1 = 
+  data_frame(
+    strap_number = 1:500,
+    strap_sample = rerun(500, boot_sample(cdi_pc_out))
+  ) %>%
+  mutate(
+    mod_1 = map(strap_sample, ~lm(crime_rate ~ pop18 + bagrad + poverty + 
+                    pcincome + region + pcarea + pcbeds, data = .x)),
+    mod_2 = map(strap_sample, ~lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = .x)),
+    results_1 = map(mod_1, broom::glance),
+    results_2 = map(mod_2, broom::glance)) %>% 
+  dplyr::select(-strap_sample) %>% 
+  unnest(results_1, results_2) 
+
+cv_df1 %>% 
+  dplyr::select(starts_with("adj")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "R2",
+    names_prefix = "adj.r.squared_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = R2)) + geom_violin()
+```
+
 
 ## Plot the violin plot
 ```{r}
@@ -275,6 +323,46 @@ cv_df %>%
     names_prefix = "rmse_") %>% 
   mutate(model = fct_inorder(model)) %>% 
   ggplot(aes(x = model, y = rmse)) + geom_violin()
+
+cv_df %>% 
+  dplyr::select(starts_with("adj")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "R2",
+    names_prefix = "adjR_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = R2)) + geom_violin()
+```
+
+# Model Validation
+## Compute RMSE, R-squared, MAE by cross-validation
+```{r}
+set.seed(1234)
+
+#specify the cross-validation method
+train <- trainControl(method = "cv", number = 5)
+#fit a regression model and use k-fold CV to evaluate performance
+model2 <- train(crime_rate ~ pop18 + bagrad + poverty + pcincome + region +
+                pcarea + pcbeds, data = cdi_pc_out, method = "lm", trControl = train)
+model3 <- train(sqrt(crime_rate) ~ pop18 + bagrad + poverty + pcincome + region +
+                pcarea + pcbeds, data = cdi_pc_out, method = "lm", trControl = train)
+model4 <- train(crime_rate ~ pop18 + bagrad + pcincome + region +
+                pcarea + pcbeds, data = cdi_pc_out, method = "lm", trControl = train)
+model5 <- train(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty +
+                pcincome*bagrad + pop18*bagrad, data = cdi_pc_out, method = "lm", trControl = train)
+#view summary of k-fold CV               
+print(model2) 
+print(model3)
+print(model4)
+print(model5)
+
+resamps <- resamples(list(model2 = model2,
+                          model3 = model3,
+                          model4 = model4,
+                          model5 = model5))
+summary(resamps)
+
 ```
 
 
