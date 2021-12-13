@@ -5,16 +5,13 @@ date: "11/16/2021"
 output: pdf_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
 
 # Purpose
 We will be analyzing data from the "County Demographic Information" (CDI) data set, which contains characteristics of 440 counties in the United States collected from 1990-1992. The primary objective of this investigation is to develop insight relevant to predicting the crime rate in counties, namely to summarize as the crime rate per 1,000 population (CRM_1000). 
 
 
 # Import the package we need
-```{r include = FALSE}
+```{r setup, include=FALSE}
 library(tidyverse)
 library(usmap)
 library(ggplot2)
@@ -230,11 +227,11 @@ rbind(mult_fit_back %>% broom::glance() %>% mutate(model_type = "mult_fit_back")
 
 
 # Model Validation
-## Compute RMSE by cross-validation
-```{r}
+## Compute RMSE and adjusted R^2 by cross-validation
+```{r warning=FALSE}
 set.seed(1234)
 cv_df = 
-  crossv_kfold(cdi_pc_out, k = 5) %>% 
+  crossv_kfold(cdi_pc_out, k = 10) %>% 
   mutate(
     train = map(train, as_tibble),
     test = map(test, as_tibble)) %>%
@@ -281,58 +278,26 @@ cv_df %>%
   t()
 ```
 
-```{r}
-boot_sample = function(df) {
-  sample_frac(df, replace = TRUE)
-}
-
-cv_df1 = 
-  data_frame(
-    strap_number = 1:500,
-    strap_sample = rerun(500, boot_sample(cdi_pc_out))
-  ) %>%
-  mutate(
-    mod_1 = map(strap_sample, ~lm(crime_rate ~ pop18 + bagrad + poverty + 
-                    pcincome + region + pcarea + pcbeds, data = .x)),
-    mod_2 = map(strap_sample, ~lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = .x)),
-    results_1 = map(mod_1, broom::glance),
-    results_2 = map(mod_2, broom::glance)) %>% 
-  dplyr::select(-strap_sample) %>% 
-  unnest(results_1, results_2) 
-
-cv_df1 %>% 
-  dplyr::select(starts_with("adj")) %>% 
-  pivot_longer(
-    everything(),
-    names_to = "model", 
-    values_to = "R2",
-    names_prefix = "adj.r.squared_") %>% 
-  mutate(model = fct_inorder(model)) %>% 
-  ggplot(aes(x = model, y = R2)) + geom_violin()
-```
 
 
 ## Plot the violin plot
-```{r}
-cv_df %>% 
-  dplyr::select(starts_with("rmse")) %>% 
-  pivot_longer(
-    everything(),
-    names_to = "model", 
-    values_to = "rmse",
-    names_prefix = "rmse_") %>% 
-  mutate(model = fct_inorder(model)) %>% 
-  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```{r warning=FALSE}
+unnest_cd_df = cv_df %>%
+  pivot_longer(rmse_model2:adjR_model5, 
+               names_pattern = "(.*)(......)$", 
+               names_to = c("limit", "model")) %>% 
+  mutate(limit=ifelse(limit=="", "value", limit)) %>%
+  pivot_wider(id_cols = model, 
+              names_from = limit, 
+              values_from = value, 
+              names_repair = "check_unique") %>% 
+  unnest(c(rmse_, adjR_)) %>%
+  rename(rmse = rmse_,
+         adjR = adjR_)
 
-cv_df %>% 
-  dplyr::select(starts_with("adj")) %>% 
-  pivot_longer(
-    everything(),
-    names_to = "model", 
-    values_to = "R2",
-    names_prefix = "adjR_") %>% 
-  mutate(model = fct_inorder(model)) %>% 
-  ggplot(aes(x = model, y = R2)) + geom_violin()
+unnest_cd_df %>% ggplot(aes(x = model, y = rmse)) + geom_violin() 
+unnest_cd_df %>% ggplot(aes(x = model, y = adjR)) + geom_violin() 
+
 ```
 
 # Model Validation
