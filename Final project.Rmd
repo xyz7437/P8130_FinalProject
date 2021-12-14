@@ -7,7 +7,7 @@ output: pdf_document
 
 
 # Purpose
-We will be analyzing data from the "County Demographic Information" (CDI) data set, which contains characteristics of 440 counties in the United States collected from 1990-1992. The primary objective of this investigation is to develop insight relevant to predicting the crime rate in counties, namely to summarize as the crime rate per 1,000 population (CRM_1000). 
+We will be analyzing data from the "County Demographic Information" (CDI) data set, which contains characteristics of 440 counties in the United States collected from 1990-1992. The primary objective of this investigation is to develop insight relevant to predicting the crime rate in counties.
 
 
 # Import the package we need
@@ -38,7 +38,7 @@ cdi = read.csv("./data/cdi.csv") %>%
          pcbeds = beds/pop,
          region = relevel(factor(region),ref = 3))
 cdi_pc = cdi %>% 
-  dplyr::select(crime_rate, everything(), -id, -cty, -state, -area, -docs, -beds, -crimes, -pop, -totalinc)
+  dplyr::select(crime_rate, everything(), -id, -cty, -state, -area, -docs, -beds, -crimes, -totalinc)
 summary(cdi_pc)
 ```
 
@@ -56,7 +56,7 @@ ggplot(cdi_state,aes(x=reorder(state,crime_rate),y=crime_rate,fill=crime_rate)) 
   coord_flip() + 
   theme_grey() + 
   labs(title = 'Ranking of States by Crime Rate',
-       y='Crime rate',x='States') +
+       y='Crime rate per 1000 population',x='States') +
   geom_hline(yintercept = mean(cdi$crime_rate),color = "#C9592E")+
   theme(plot.title = element_text(hjust = 0.5,size = 14, face = "bold"),
         axis.text=element_text(size=6.5))
@@ -81,8 +81,9 @@ print(p)
 
 ## Boxplot for each variable
 ```{r}
-par(mfrow=c(3,4))
+par(mfrow=c(3,5))
 boxplot(cdi_pc$crime_rate,  main = "crime_rate")
+boxplot(cdi_pc$pop, main = "pop")
 boxplot(cdi_pc$pop18, main = "pop18")
 boxplot(cdi_pc$pop65, main = "pop65")
 boxplot(cdi_pc$pcincome, main = "pcincome")
@@ -93,6 +94,8 @@ boxplot(cdi_pc$poverty, main = "poverty")
 boxplot(cdi_pc$pcarea, main = "pcarea")
 boxplot(cdi_pc$pcdocs, main = "pcdocs")
 boxplot(cdi_pc$pcbeds, main = "pcbeds")
+
+
 boxplot(crime_rate ~ region, data = cdi_pc, main = "region")
 ```
 
@@ -124,7 +127,7 @@ summary(mult_fit)
 mult_fit_back <- step(mult_fit, direction='backward')
 mult_fit_back
 ```
-crime_rate ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds
+crime_rate ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds
 
 
 
@@ -139,13 +142,15 @@ bc = boxcox(mult_fit_back)
 ```
 
 
+
+
 ## Diagnose the model without outliers
 ```{r}
 # remove influential points
-cdi_pc_out = cdi_pc[-c(6,128,412),]
+cdi_pc_out = cdi_pc[-c(1,6,412),]
 
 # fit model with and without influential points
-mult_fit_back_without = lm(crime_rate ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
+mult_fit_back_without = lm(crime_rate ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
 
 summary(mult_fit_back)
 summary(mult_fit_back_without)
@@ -162,9 +167,8 @@ bc_without = boxcox(mult_fit_back_without)
 ## Box-cox transformation
 ```{r}
 (lambda = bc_without$x[which.max(bc_without$y)])
-#mult_fit_back_without_trans = lm(((crime_rate^lambda-1)/lambda) ~ pop18 + bagrad + poverty + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
 
-mult_fit_back_without_trans = lm(crime_rate^0.5 ~ pop18 + bagrad + poverty + pcincome + 
+mult_fit_back_without_trans = lm(crime_rate^0.5 ~ pop + pop18 + poverty + pcincome + 
                                  region + pcarea + pcbeds, data = cdi_pc_out)
 
 summary(mult_fit_back_without_trans)
@@ -174,8 +178,10 @@ par(mfrow = c(2,3))
 plot(mult_fit_back_without_trans)
 plot(mult_fit_back_without_trans, which = 4)
 bc_without_trans = boxcox(mult_fit_back_without_trans)
-
 ```
+
+
+
 
 ## Compare the Adjusted R^2
 ```{r}
@@ -183,8 +189,9 @@ rbind(mult_fit_back %>% broom::glance() %>% mutate(model_type = "mult_fit_back")
       mult_fit_back_without %>% broom::glance() %>% mutate(model_type = "mult_fit_back_without"),
       mult_fit_back_without_trans %>% broom::glance()%>% mutate(model_type = "mult_fit_back_without_trans")) %>%
         dplyr::select(model_type, everything())
-mult_fit_back_without_trans %>% broom::glance() %>% as.data.frame()
 ```
+
+
 
 
 ## Assessing Multicollinearity
@@ -192,8 +199,8 @@ mult_fit_back_without_trans %>% broom::glance() %>% as.data.frame()
 # Calculate the variance inflation factor (VIF)
 check_collinearity(mult_fit_back_without)
 
-# Remove the variable whose vif is larger than 10 
-mult_fit_back_without_vif = lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
+# Remove the variable with high VIF 
+mult_fit_back_without_vif = lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds, data = cdi_pc_out)
 summary(mult_fit_back_without_vif)
 
 # Diagnose the model removing poverty term
@@ -201,11 +208,15 @@ par(mfrow = c(2,3))
 plot(mult_fit_back_without_vif)
 plot(mult_fit_back_without_vif, which = 4)
 bc_without_trans = boxcox(mult_fit_back_without_vif)
+```
 
 
-# Add the interaction 
-mult_fit_back_without_int = lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = cdi_pc_out)
+## Add the interaction terms
+```{r}
+mult_fit_back_without_int = lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty, data = cdi_pc_out)
 summary(mult_fit_back_without_int)
+
+anova(mult_fit_back_without,mult_fit_back_without_int)
 
 # Diagnose the model with interaction term
 par(mfrow = c(2,3))
@@ -236,13 +247,13 @@ cv_df =
     train = map(train, as_tibble),
     test = map(test, as_tibble)) %>%
   mutate(
-    mult_fit_back_without = map(train, ~lm(crime_rate ~ pop18 + bagrad + poverty + 
+    mult_fit_back_without = map(train, ~lm(crime_rate ~ pop + pop18 + poverty + 
                                 pcincome + region + pcarea + pcbeds, data = .x)),
-    mult_fit_back_without_trans = map(train, ~lm(sqrt(crime_rate) ~ pop18 + bagrad + poverty + 
+    mult_fit_back_without_trans = map(train, ~lm(sqrt(crime_rate) ~ pop + pop18 + poverty + 
                                       pcincome + region + pcarea + pcbeds, data = .x)),
-    mult_fit_back_without_vif = map(train, ~lm(crime_rate ~ pop18 + bagrad + 
+    mult_fit_back_without_vif = map(train, ~lm(crime_rate ~ pop + pop18 + 
                                     pcincome + region + pcarea + pcbeds, data = .x)),
-    mult_fit_back_without_int = map(train, ~lm(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad + pop18*bagrad, data = .x))) %>% 
+    mult_fit_back_without_int = map(train, ~lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad, data = .x))) %>% 
   mutate(
     rmse_model2 = map2_dbl(mult_fit_back_without, test, ~rmse(model = .x, data = .y)),
     rmse_model3 = map2_dbl(mult_fit_back_without_trans, test, ~rmse(model = .x, data = .y)),
@@ -263,18 +274,6 @@ cv_df =
 
 cv_df %>%
   summarise_each(funs(mean( .,na.rm = TRUE))) %>%
-  mutate(
-    AIC_model2 = nrow(cdi_pc_out)*log(rmse_model2^2) + 2*7,
-    AIC_model3 = nrow(cdi_pc_out)*log(rmse_model3^2) + 2*7,
-    AIC_model4 = nrow(cdi_pc_out)*log(rmse_model4^2) + 2*6,
-    AIC_model5 = nrow(cdi_pc_out)*log(rmse_model5^2) + 2*10
-  ) %>%
-  mutate(
-    BIC_model2 = nrow(cdi_pc_out)*log(rmse_model2^2) + log(nrow(cdi_pc_out))*7,
-    BIC_model3 = nrow(cdi_pc_out)*log(rmse_model3^2) + log(nrow(cdi_pc_out))*7,
-    BIC_model4 = nrow(cdi_pc_out)*log(rmse_model4^2) + log(nrow(cdi_pc_out))*6,
-    BIC_model5 = nrow(cdi_pc_out)*log(rmse_model5^2) + log(nrow(cdi_pc_out))*10
-  ) %>%
   t()
 ```
 
@@ -299,37 +298,6 @@ unnest_cd_df %>% ggplot(aes(x = model, y = rmse)) + geom_violin()
 unnest_cd_df %>% ggplot(aes(x = model, y = adjR)) + geom_violin() 
 
 ```
-
-# Model Validation
-## Compute RMSE, R-squared, MAE by cross-validation
-```{r}
-set.seed(1234)
-
-#specify the cross-validation method
-train <- trainControl(method = "cv", number = 5)
-#fit a regression model and use k-fold CV to evaluate performance
-model2 <- train(crime_rate ~ pop18 + bagrad + poverty + pcincome + region +
-                pcarea + pcbeds, data = cdi_pc_out, method = "lm", trControl = train)
-model3 <- train(sqrt(crime_rate) ~ pop18 + bagrad + poverty + pcincome + region +
-                pcarea + pcbeds, data = cdi_pc_out, method = "lm", trControl = train)
-model4 <- train(crime_rate ~ pop18 + bagrad + pcincome + region +
-                pcarea + pcbeds, data = cdi_pc_out, method = "lm", trControl = train)
-model5 <- train(crime_rate ~ pop18 + bagrad + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty +
-                pcincome*bagrad + pop18*bagrad, data = cdi_pc_out, method = "lm", trControl = train)
-#view summary of k-fold CV               
-print(model2) 
-print(model3)
-print(model4)
-print(model5)
-
-resamps <- resamples(list(model2 = model2,
-                          model3 = model3,
-                          model4 = model4,
-                          model5 = model5))
-summary(resamps)
-
-```
-
 
 
 # Thanks for reading!
