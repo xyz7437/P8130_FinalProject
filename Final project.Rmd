@@ -56,7 +56,7 @@ ggplot(cdi_state,aes(x=reorder(state,crime_rate),y=crime_rate,fill=crime_rate)) 
   coord_flip() + 
   theme_grey() + 
   labs(title = 'Ranking of States by Crime Rate',
-       y='Crime rate per 1000 population',x='States') +
+       y='Crime rate',x='States') +
   geom_hline(yintercept = mean(cdi$crime_rate),color = "#C9592E")+
   theme(plot.title = element_text(hjust = 0.5,size = 14, face = "bold"),
         axis.text=element_text(size=6.5))
@@ -167,6 +167,7 @@ bc_without = boxcox(mult_fit_back_without)
 ## Box-cox transformation
 ```{r}
 (lambda = bc_without$x[which.max(bc_without$y)])
+lambda
 
 mult_fit_back_without_trans = lm(crime_rate^0.5 ~ pop + pop18 + poverty + pcincome + 
                                  region + pcarea + pcbeds, data = cdi_pc_out)
@@ -214,6 +215,8 @@ bc_without_trans = boxcox(mult_fit_back_without_vif)
 ## Add the interaction terms
 ```{r}
 mult_fit_back_without_int = lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty, data = cdi_pc_out)
+
+
 summary(mult_fit_back_without_int)
 
 anova(mult_fit_back_without,mult_fit_back_without_int)
@@ -253,7 +256,7 @@ cv_df =
                                       pcincome + region + pcarea + pcbeds, data = .x)),
     mult_fit_back_without_vif = map(train, ~lm(crime_rate ~ pop + pop18 + 
                                     pcincome + region + pcarea + pcbeds, data = .x)),
-    mult_fit_back_without_int = map(train, ~lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty + pcincome*bagrad, data = .x))) %>% 
+    mult_fit_back_without_int = map(train, ~lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty + pcincome*poverty, data = .x))) %>% 
   mutate(
     rmse_model2 = map2_dbl(mult_fit_back_without, test, ~rmse(model = .x, data = .y)),
     rmse_model3 = map2_dbl(mult_fit_back_without_trans, test, ~rmse(model = .x, data = .y)),
