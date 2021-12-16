@@ -23,6 +23,7 @@ library(MASS) # boxcox
 library(performance) # vif
 library(GGally)
 library(modelr)
+library(olsrr)
 ```
 
 
@@ -269,11 +270,17 @@ cv_df =
     res_model5 = map(mult_fit_back_without_int, broom::glance %>% as.data.frame))%>%
   unnest(res_model2, res_model3, res_model4, res_model5) %>%
   dplyr::select(rmse_model2,rmse_model3,rmse_model4,rmse_model5,
-                value.adj.r.squared,value.adj.r.squared1,value.adj.r.squared2,value.adj.r.squared3) %>%
+                value.adj.r.squared,value.adj.r.squared1,value.adj.r.squared2,value.adj.r.squared3,
+                value.AIC ,value.AIC1, value.AIC2, value.AIC3) %>%
   rename(adjR_model2 = value.adj.r.squared,
          adjR_model3 = value.adj.r.squared1,
          adjR_model4 = value.adj.r.squared2,
-         adjR_model5 = value.adj.r.squared3)
+         adjR_model5 = value.adj.r.squared3,
+         aic_model2 = value.AIC,
+         aic_model3 = value.AIC1,
+         aic_model4 = value.AIC2,
+         aic_model5 = value.AIC3) %>%
+
 
 cv_df %>%
   summarise_each(funs(mean( .,na.rm = TRUE))) %>%
@@ -300,6 +307,86 @@ unnest_cd_df = cv_df %>%
 unnest_cd_df %>% ggplot(aes(x = model, y = rmse)) + geom_violin() 
 unnest_cd_df %>% ggplot(aes(x = model, y = adjR)) + geom_violin() 
 
+```
+```{r}
+set.seed(123)
+# Use 5-fold validation and create the training sets
+train = trainControl(method = "cv", number = 10)
+
+# Fit the 4-variables model that we discussed in previous lectures
+model1 = train(crime_rate ~ .,
+               data = cdi_pc_out,
+               trControl = train,
+               method = 'rpart',
+               na.action = na.pass)
+model2 = train(crime_rate ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds,
+               data = cdi_pc_out,
+               trControl = train,
+               method = 'rpart',
+               na.action = na.pass)
+model3 = train(sqrt(crime_rate) ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds,
+               data = cdi_pc_out,
+               trControl = train,
+               method = 'rpart',
+               na.action = na.pass)
+model4 = train(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds,
+               data = cdi_pc_out,
+               trControl = train,
+               method = 'rpart',
+               na.action = na.pass)
+model5 = train(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty*pcincome,
+              data = cdi_pc_out,
+              trControl = train,
+              method = 'rpart',
+              na.action = na.pass)
+
+```
+
+
+```{r}
+testRows=sample(nrow(cdi_pc_out),0.1*nrow(cdi_pc_out))
+testData=cdi_pc_out[testRows, ]
+trainData=cdi_pc_out[-testRows, ]
+n=nrow(trainData)
+library(boot)
+library(CombMSC)
+model1=lm(crime_rate ~ ., data = trainData)
+
+model2=lm(crime_rate ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds, data = trainData)
+cat("10-fold cross validation score for Model 2: ",cv.glm(trainData,model2,K=10)$delta[1], "\n")
+cat("Mallow's CP: ",Cp(model2,S2=summary(model2)$sigma^2),"\nAIC: ", AIC(model2,k=2),"\nBIC: ",AIC(model2,k=log(n)), "\n")
+
+
+model3=lm(sqrt(crime_rate) ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds, data = trainData)
+cat("10-fold cross validation score for Model 3: ",cv.glm(trainData,model3,K=10)$delta[1], "\n")
+cat("Mallow's CP: ",Cp(model3,S2=summary(model3)$sigma^2),"\nAIC: ", AIC(model3,k=2),"\nBIC: ",AIC(model3,k=log(n)) , "\n")
+
+model4=lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds, data = trainData)
+cat("10-fold cross validation score for Model 4: ",cv.glm(trainData,model4,K=10)$delta[1], "\n")
+cat("Mallow's CP: ",Cp(model4,S2=summary(model4)$sigma^2),"\nAIC: ", AIC(model4,k=2),"\nBIC: ",AIC(model4,k=log(n)) , "\n")
+
+model5=lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty*pcincome, data = trainData)
+cat("10-fold cross validation score for Model 5: ",cv.glm(trainData,model5,K=10)$delta[1], "\n")
+cat("Mallow's CP: ",Cp(model5,S2=summary(model5)$sigma^2),"\nAIC: ", AIC(model5,k=2),"\nBIC: ",AIC(model5,k=log(n)) , "\n")
+
+
+
+model2=lm(crime_rate ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds, data = trainData)
+cat("10-fold cross validation score for Model 2: ",cv.glm(trainData,model2,K=10)$delta[1], "\n")
+cat("Mallow's CP: ",ols_mallows_cp(model2,model1),"\nAIC: ", AIC(model2,k=2),"\nBIC: ",AIC(model2,k=log(n)), "\n")
+
+
+model3=lm(sqrt(crime_rate) ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds, data = trainData)
+cat("10-fold cross validation score for Model 3: ",cv.glm(trainData,model3,K=10)$delta[1], "\n")
+cat("Mallow's CP: ",ols_mallows_cp(model3,model1),"\nAIC: ", AIC(model3,k=2),"\nBIC: ",AIC(model3,k=log(n)) , "\n")
+
+model4=lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds, data = trainData)
+cat("10-fold cross validation score for Model 4: ",cv.glm(trainData,model4,K=10)$delta[1], "\n")
+cat("Mallow's CP: ",ols_mallows_cp(model4,model1),"\nAIC: ", AIC(model4,k=2),"\nBIC: ",AIC(model4,k=log(n)) , "\n")
+
+model5=lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty*pcincome, data = trainData)
+cat("10-fold cross validation score for Model 5: ",cv.glm(trainData,model5,K=10)$delta[1], "\n")
+cat("Mallow's CP: ",ols_mallows_cp(model5,model1),"\nAIC: ", AIC(model5,k=2),"\nBIC: ",AIC(model5,k=log(n)) , "\n")
 ```
 
 
