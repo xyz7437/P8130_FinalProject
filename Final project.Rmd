@@ -23,7 +23,7 @@ library(MASS) # boxcox
 library(performance) # vif
 library(GGally)
 library(modelr)
-library(olsrr)
+library(CombMSC)
 ```
 
 
@@ -95,8 +95,6 @@ boxplot(cdi_pc$poverty, main = "poverty")
 boxplot(cdi_pc$pcarea, main = "pcarea")
 boxplot(cdi_pc$pcdocs, main = "pcdocs")
 boxplot(cdi_pc$pcbeds, main = "pcbeds")
-
-
 boxplot(crime_rate ~ region, data = cdi_pc, main = "region")
 ```
 
@@ -240,29 +238,28 @@ rbind(mult_fit_back %>% broom::glance() %>% mutate(model_type = "mult_fit_back")
 ```
 
 
-## Comparison between Adjusted R squared, Cp, AIC, BIC
+## Comparison between Cp
 ```{r}
 model2=mult_fit_back_without
-cat("Performance metrics for Model 2:\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model2)), "\nMallow's CP: ",Cp(model2,S2=(summary(model2)$sigma)^2),"\nAIC: ", AIC(model2,k=2),"\nBIC: ",AIC(model2,k=log(n)), "\n","\n")
+cat("Mallow's CP for Model 2:", Cp(model2,S2=(summary(model2)$sigma)^2),"\n")
 
 
 model3=mult_fit_back_without_trans
-cat("Performance metrics for Model 3:\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model3)), "\nMallow's CP: ",Cp(model3,S2=(summary(model3)$sigma)^2),"\nAIC: ", AIC(model3,k=2),"\nBIC: ",AIC(model3,k=log(n)) , "\n","\n")
+cat("\nMallow's CP for Model 3:", Cp(model3,S2=(summary(model3)$sigma)^2),"\n")
 
 model4=mult_fit_back_without_vif
-cat("Performance metrics for Model 4:\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model4)), "\nMallow's CP: ",Cp(model4,S2=(summary(model4)$sigma)^2),"\nAIC: ", AIC(model4,k=2),"\nBIC: ",AIC(model4,k=log(n)) , "\n","\n")
+cat("\nMallow's CP for Model 4:", Cp(model4,S2=(summary(model4)$sigma)^2),"\n")
 
 model5=mult_fit_back_without_int
-cat("Performance metrics for Model 5:\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model5)), "\nMallow's CP: ",Cp(model5,S2=(summary(model5)$sigma)^2),"\nAIC: ", AIC(model5,k=2),"\nBIC: ",AIC(model5,k=log(n)) , "\n","\n")
+cat("\nMallow's CP for Model 5:", Cp(model5,S2=(summary(model5)$sigma)^2),"\n")
+
 ```
 
 
+
+
 # Model Validation
-## Compute RMSE and adjusted R^2 by cross-validation
+## Compute RMSE, adjusted R^2, AIC and BIC by cross-validation
 ```{r warning=FALSE}
 set.seed(1234)
 cv_df = 
@@ -291,7 +288,8 @@ cv_df =
   unnest(res_model2, res_model3, res_model4, res_model5) %>%
   dplyr::select(rmse_model2,rmse_model3,rmse_model4,rmse_model5,
                 value.adj.r.squared,value.adj.r.squared1,value.adj.r.squared2,value.adj.r.squared3,
-                value.AIC ,value.AIC1, value.AIC2, value.AIC3) %>%
+                value.AIC, value.AIC1, value.AIC2, value.AIC3,
+                value.BIC, value.BIC1, value.BIC2, value.BIC3) %>%
   rename(adjR_model2 = value.adj.r.squared,
          adjR_model3 = value.adj.r.squared1,
          adjR_model4 = value.adj.r.squared2,
@@ -299,7 +297,11 @@ cv_df =
          aic_model2 = value.AIC,
          aic_model3 = value.AIC1,
          aic_model4 = value.AIC2,
-         aic_model5 = value.AIC3)
+         aic_model5 = value.AIC3,
+         bic_model2 = value.BIC,
+         bic_model3 = value.BIC1,
+         bic_model4 = value.BIC2,
+         bic_model5 = value.BIC3,)
 
 
 cv_df %>%
@@ -312,7 +314,7 @@ cv_df %>%
 ## Plot the violin plot
 ```{r warning=FALSE}
 unnest_cd_df = cv_df %>%
-  pivot_longer(rmse_model2:aic_model5, 
+  pivot_longer(rmse_model2:bic_model5, 
                names_pattern = "(.*)(......)$", 
                names_to = c("limit", "model")) %>% 
   mutate(limit=ifelse(limit=="", "value", limit)) %>%
@@ -320,118 +322,16 @@ unnest_cd_df = cv_df %>%
               names_from = limit, 
               values_from = value, 
               names_repair = "check_unique") %>% 
-  unnest(c(rmse_, adjR_, aic_)) %>%
-  rename(rmse = rmse_,
-         adjR = adjR_,
-         aic = aic_)
+  unnest(c(rmse_, adjR_, aic_, bic_)) %>%
+  rename(RMSE = rmse_,
+         adjR2 = adjR_,
+         AIC = aic_,
+         BIC = bic_)
 
-unnest_cd_df %>% ggplot(aes(x = model, y = rmse)) + geom_violin() 
-unnest_cd_df %>% ggplot(aes(x = model, y = adjR)) + geom_violin() 
-unnest_cd_df %>% ggplot(aes(x = model, y = aic)) + geom_violin() 
-```
-```{r}
-set.seed(123)
-# Use 5-fold validation and create the training sets
-train = trainControl(method = "cv", number = 10)
-
-# Fit the 4-variables model that we discussed in previous lectures
-model1 = train(crime_rate ~ .,
-               data = cdi_pc_out,
-               trControl = train,
-               method = 'rpart',
-               na.action = na.pass)
-model2 = train(crime_rate ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds,
-               data = cdi_pc_out,
-               trControl = train,
-               method = 'rpart',
-               na.action = na.pass)
-model3 = train(sqrt(crime_rate) ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds,
-               data = cdi_pc_out,
-               trControl = train,
-               method = 'rpart',
-               na.action = na.pass)
-model4 = train(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds,
-               data = cdi_pc_out,
-               trControl = train,
-               method = 'rpart',
-               na.action = na.pass)
-model5 = train(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty*pcincome,
-              data = cdi_pc_out,
-              trControl = train,
-              method = 'rpart',
-              na.action = na.pass)
-
-```
-
-
-```{r}
-testRows=sample(nrow(cdi_pc_out),0.1*nrow(cdi_pc_out))
-testData=cdi_pc_out[testRows, ]
-trainData=cdi_pc_out[-testRows, ]
-n=nrow(trainData)
-library(boot)
-library(CombMSC)
-model1=lm(crime_rate ~ ., data = trainData)
-
-model2=lm(crime_rate ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds, data = trainData)
-cat("10-fold cross validation score for Model 2: ",cv.glm(trainData,model2,K=10)$delta[1], "\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model2)), "\nMallow's CP: ",Cp(model2,S2=(summary(model2)$sigma)^2),"\nAIC: ", AIC(model2,k=2),"\nBIC: ",AIC(model2,k=log(n)), "\n")
-
-
-model3=lm(sqrt(crime_rate) ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds, data = trainData)
-cat("10-fold cross validation score for Model 3: ",cv.glm(trainData,model3,K=10)$delta[1], "\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model3)), "\nMallow's CP: ",Cp(model3,S2=(summary(model3)$sigma)^2),"\nAIC: ", AIC(model3,k=2),"\nBIC: ",AIC(model3,k=log(n)) , "\n")
-
-model4=lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds, data = trainData)
-cat("10-fold cross validation score for Model 4: ",cv.glm(trainData,model4,K=10)$delta[1], "\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model4)), "\nMallow's CP: ",Cp(model4,S2=(summary(model4)$sigma)^2),"\nAIC: ", AIC(model4,k=2),"\nBIC: ",AIC(model4,k=log(n)) , "\n")
-
-model5=lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty*pcincome, data = trainData)
-cat("10-fold cross validation score for Model 5: ",cv.glm(trainData,model5,K=10)$delta[1], "\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model5)), "\nMallow's CP: ",Cp(model5,S2=(summary(model5)$sigma)^2),"\nAIC: ", AIC(model5,k=2),"\nBIC: ",AIC(model5,k=log(n)) , "\n")
-
-
-
-model2=lm(crime_rate ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds, data = trainData)
-cat("10-fold cross validation score for Model 2: ",cv.glm(trainData,model2,K=10)$delta[1], "\n")
-cat("Mallow's CP: ",ols_mallows_cp(model2,model1),"\nAIC: ", AIC(model2,k=2),"\nBIC: ",AIC(model2,k=log(n)), "\n")
-
-
-model3=lm(sqrt(crime_rate) ~ pop + pop18 + poverty + pcincome + region + pcarea + pcbeds, data = trainData)
-cat("10-fold cross validation score for Model 3: ",cv.glm(trainData,model3,K=10)$delta[1], "\n")
-cat("Mallow's CP: ",ols_mallows_cp(model3,model1),"\nAIC: ", AIC(model3,k=2),"\nBIC: ",AIC(model3,k=log(n)) , "\n")
-
-model4=lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds, data = trainData)
-cat("10-fold cross validation score for Model 4: ",cv.glm(trainData,model4,K=10)$delta[1], "\n")
-cat("Mallow's CP: ",ols_mallows_cp(model4,model1),"\nAIC: ", AIC(model4,k=2),"\nBIC: ",AIC(model4,k=log(n)) , "\n")
-
-model5=lm(crime_rate ~ pop + pop18 + pcincome + region + pcarea + pcbeds + poverty*pcincome, data = trainData)
-cat("10-fold cross validation score for Model 5: ",cv.glm(trainData,model5,K=10)$delta[1], "\n")
-cat("Mallow's CP: ",ols_mallows_cp(model5,model1),"\nAIC: ", AIC(model5,k=2),"\nBIC: ",AIC(model5,k=log(n)) , "\n")
-
-
-
-
-```
-
-## Comparison between Adjusted R squared, Cp, AIC, BIC
-```{r}
-model2=mult_fit_back_without
-cat("Performance metrics for Model 2:\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model2)), "\nMallow's CP: ",Cp(model2,S2=(summary(model2)$sigma)^2),"\nAIC: ", AIC(model2,k=2),"\nBIC: ",AIC(model2,k=log(n)), "\n","\n")
-
-
-model3=mult_fit_back_without_trans
-cat("Performance metrics for Model 3:\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model3)), "\nMallow's CP: ",Cp(model3,S2=(summary(model3)$sigma)^2),"\nAIC: ", AIC(model3,k=2),"\nBIC: ",AIC(model3,k=log(n)) , "\n","\n")
-
-model4=mult_fit_back_without_vif
-cat("Performance metrics for Model 4:\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model4)), "\nMallow's CP: ",Cp(model4,S2=(summary(model4)$sigma)^2),"\nAIC: ", AIC(model4,k=2),"\nBIC: ",AIC(model4,k=log(n)) , "\n","\n")
-
-model5=mult_fit_back_without_int
-cat("Performance metrics for Model 5:\n")
-cat("Adujsted R squared: ", -(Adj.Rsq(model5)), "\nMallow's CP: ",Cp(model5,S2=(summary(model5)$sigma)^2),"\nAIC: ", AIC(model5,k=2),"\nBIC: ",AIC(model5,k=log(n)) , "\n","\n")
+unnest_cd_df %>% ggplot(aes(x = model, y = RMSE)) + geom_violin(aes(fill=model),color="grey40") + theme_bw()
+unnest_cd_df %>% ggplot(aes(x = model, y = adjR2)) + geom_violin(aes(fill=model),color="grey40") + theme_bw()
+unnest_cd_df %>% ggplot(aes(x = model, y = AIC)) + geom_violin(aes(fill=model),color="grey40") + theme_bw()
+unnest_cd_df %>% ggplot(aes(x = model, y = BIC)) + geom_violin(aes(fill=model),color="grey40") + theme_bw()
 ```
 
 
